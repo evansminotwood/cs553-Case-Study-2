@@ -26,7 +26,9 @@ DEFAULT_KEY=${DEFAULT_KEY:-$BASE/keys/student-admin_key}
 
 say() { echo "$(date '+%F %T') $*" >> "$LOG"; }
 reachable() { ssh -i "$1" -p "$PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 "$REMOTE" true 2>/dev/null; }
-app_up() { curl -fsS -o /dev/null --max-time 10 "http://${MACHINE}:7860"; }
+# Port 7860 is not exposed off the VM (WPI forwards only the SSH port), so check
+# the app on the VM's own localhost via SSH rather than the external hostname.
+app_up() { ssh -i "$MYKEY" -p "$PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 "$REMOTE" 'curl -fsS -o /dev/null --max-time 10 http://localhost:7860' 2>/dev/null; }
 # deploy.sh reads the same key/port config from the environment we export below.
 redeploy() { (cd "$BASE" && MYKEY="$MYKEY" DEFAULT_KEY="$DEFAULT_KEY" PORT="$PORT" ./deploy.sh >>"$LOG" 2>&1); }
 
