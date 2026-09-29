@@ -20,6 +20,9 @@ PORT=${PORT:-22010}
 MACHINE=${MACHINE:-paffenroth-23.dyn.wpi.edu}
 REMOTE="student-admin@${MACHINE}"
 LOG=${LOG:-$BASE/recovery.log}
+# deploy.sh aborts without a real REPO_URL; default it here so manual runs work
+# too (not just cron, which passes it in the crontab line).
+REPO_URL=${REPO_URL:-https://github.com/evansminotwood/cs553-Case-Study-2.git}
 
 MYKEY=${MYKEY:-$BASE/keys/cs553_group}
 DEFAULT_KEY=${DEFAULT_KEY:-$BASE/keys/student-admin_key}
@@ -38,7 +41,7 @@ reachable() { ssh -i "$1" -p "$PORT" -o BatchMode=yes -o StrictHostKeyChecking=a
 # the app on the VM's own localhost via SSH rather than the external hostname.
 app_up() { ssh -i "$MYKEY" -p "$PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 "$REMOTE" 'curl -fsS -o /dev/null --max-time 10 http://localhost:7860' 2>/dev/null; }
 # deploy.sh reads the same key/port config from the environment we export below.
-redeploy() { (cd "$BASE" && MYKEY="$MYKEY" DEFAULT_KEY="$DEFAULT_KEY" PORT="$PORT" ./deploy.sh >>"$LOG" 2>&1); }
+redeploy() { (cd "$BASE" && REPO_URL="$REPO_URL" MYKEY="$MYKEY" DEFAULT_KEY="$DEFAULT_KEY" PORT="$PORT" ./deploy.sh >>"$LOG" 2>&1); }
 
 if reachable "$MYKEY"; then
   if app_up; then
