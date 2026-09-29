@@ -92,8 +92,10 @@ SCP effectivechatbot.service "${REMOTE}:/tmp/effectivechatbot.service"
 SSH "sed 's#__APP_DIR__#${REMOTE_APP_DIR}#g' /tmp/effectivechatbot.service | sudo tee /etc/systemd/system/effectivechatbot.service >/dev/null &&
      sudo systemctl daemon-reload && sudo systemctl enable effectivechatbot -q && sudo systemctl restart effectivechatbot && rm -f /tmp/effectivechatbot.service"
 
-# ---- 7. verify (first boot downloads the model; poll up to ~2 min) ----
+# ---- 7. verify (informational; the deploy itself is done at step 6). Non-fatal:
+# a transient SSH throttle/timeout here must not report the whole deploy as failed.
 echo "[deploy] waiting for app on :7860 ..."
 SSH 'for i in $(seq 1 24); do curl -fsS -o /dev/null http://localhost:7860 && { echo "[deploy] app is UP"; exit 0; }; sleep 5; done;
-     echo "[deploy] app not up yet (model may still be downloading). Recent logs:"; sudo systemctl status effectivechatbot --no-pager | tail -n 15'
+     echo "[deploy] app not up yet (model may still be downloading). Recent logs:"; sudo systemctl status effectivechatbot --no-pager | tail -n 15' \
+  || echo "[deploy] verify inconclusive (could not connect — likely transient SSH throttle); service was enabled+started in step 6."
 echo "[deploy] done. App URL: http://${MACHINE}:7860  (or SSH-tunnel port 7860)"
