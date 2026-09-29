@@ -44,21 +44,20 @@ post() {  # JSON-safe Discord post
 }
 
 ts="$(date '+%F %H:%M %Z')"
-open_list=""
+rows=""; open_count=0; total=0
 for g in $TARGETS; do
   [ "$g" = "$MYGROUP" ] && continue
-  port=$((BASE_PORT + g))
+  total=$((total+1)); port=$((BASE_PORT + g))
   if host=$(ssh -i "$KEY" -p "$port" -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=6 \
               student-admin@"$MACHINE" hostname 2>/dev/null); then
-    open_list+="- group ${g} (port ${port}) OPEN -> ${host}"$'\n'
+    rows+="$(printf '%-6s %-7s OPEN (%s)' "$g" "$port" "$host")"$'\n'; open_count=$((open_count+1))
+  else
+    rows+="$(printf '%-6s %-7s protected' "$g" "$port")"$'\n'
   fi
   sleep "$SLEEP_BETWEEN"
 done
 
-if [ -n "$open_list" ]; then
-  msg="🔓 **Red-team sweep ${ts}** — OPEN teams (default key still works):"$'\n'"${open_list}"$'\n'"(read-only hostname check from linux.wpi.edu; notify any team you access)"
-else
-  msg="🔒 Red-team sweep ${ts} — no open teams found (all locked down)."
-fi
+hdr="$(printf '%-6s %-7s %s' group port status)"
+msg="**Red-team sweep ${ts}** — ${open_count}/${total} OPEN (read-only hostname check; notify any team you access)"$'\n'"\`\`\`"$'\n'"${hdr}"$'\n'"------------------------------"$'\n'"${rows}\`\`\`"
 echo "$msg"
 post "$msg"
