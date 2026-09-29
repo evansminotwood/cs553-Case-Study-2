@@ -13,7 +13,8 @@ set -uo pipefail
 BASE="$(cd "$(dirname "$0")" && pwd)"
 MACHINE=${MACHINE:-paffenroth-23.dyn.wpi.edu}
 BASE_PORT=${BASE_PORT:-22000}
-GROUPS=${GROUPS:-21}
+# Only teams that actually have members (empty teams have no VM to attack).
+TARGETS=${TARGETS:-"25 20 19 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1"}
 MYGROUP=${MYGROUP:-10}                       # skip our own VM
 KEY=${KEY:-$BASE/keys/student-admin_key}
 SLEEP_BETWEEN=${SLEEP_BETWEEN:-10}           # throttle: don't look like a scanner
@@ -37,7 +38,7 @@ post() {  # JSON-safe Discord post
 
 ts="$(date '+%F %H:%M %Z')"
 open_list=""
-for g in $(seq 1 "$GROUPS"); do
+for g in $TARGETS; do
   [ "$g" = "$MYGROUP" ] && continue
   port=$((BASE_PORT + g))
   if host=$(ssh -i "$KEY" -p "$port" -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=6 \
