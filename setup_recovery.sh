@@ -15,7 +15,7 @@ set -euo pipefail
 
 BASE="$(cd "$(dirname "$0")" && pwd)"
 REPO_URL=${REPO_URL:-https://github.com/evansminotwood/cs553-Case-Study-2.git}
-CRON_MIN=${CRON_MIN:-5}
+CRON_MIN=${CRON_MIN:-15}
 
 # 1. verify required secrets are present
 for f in keys/cs553_group keys/student-admin_key app.env; do

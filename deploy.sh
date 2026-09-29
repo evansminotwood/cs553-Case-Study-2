@@ -16,6 +16,9 @@ set -euo pipefail
 # ---- config (override via env) ----
 PORT=${PORT:-22010}
 MACHINE=${MACHINE:-paffenroth-23.dyn.wpi.edu}
+# DNS-proof fallback: recovery may invoke deploy from a node with flaky DNS.
+VM_IP=${VM_IP:-130.215.182.120}
+getent hosts "$MACHINE" >/dev/null 2>&1 || MACHINE="$VM_IP"
 MYKEY=${MYKEY:-$HOME/.ssh/cs553_group}
 MYPUB=${MYPUB:-${MYKEY}.pub}
 DEFAULT_KEY=${DEFAULT_KEY:-$HOME/.ssh/student-admin_key}

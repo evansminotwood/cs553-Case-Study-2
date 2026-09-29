@@ -12,6 +12,8 @@ set -uo pipefail
 
 BASE="$(cd "$(dirname "$0")" && pwd)"
 MACHINE=${MACHINE:-paffenroth-23.dyn.wpi.edu}
+VM_IP=${VM_IP:-130.215.182.120}   # DNS-proof fallback if this node can't resolve the name
+getent hosts "$MACHINE" >/dev/null 2>&1 || MACHINE="$VM_IP"
 BASE_PORT=${BASE_PORT:-22000}
 # Only teams that actually have members (empty teams have no VM to attack).
 TARGETS=${TARGETS:-"25 20 19 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1"}

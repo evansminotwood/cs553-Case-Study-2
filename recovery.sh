@@ -18,6 +18,10 @@ set -uo pipefail
 BASE=${BASE:-$HOME/cs2}
 PORT=${PORT:-22010}
 MACHINE=${MACHINE:-paffenroth-23.dyn.wpi.edu}
+# DNS-proof: some linux.wpi.edu nodes intermittently fail to resolve the .dyn name.
+# If this host can't resolve it, fall back to the last-known IP so recovery still runs.
+VM_IP=${VM_IP:-130.215.182.120}
+getent hosts "$MACHINE" >/dev/null 2>&1 || MACHINE="$VM_IP"
 REMOTE="student-admin@${MACHINE}"
 LOG=${LOG:-$BASE/recovery.log}
 # deploy.sh aborts without a real REPO_URL; default it here so manual runs work
