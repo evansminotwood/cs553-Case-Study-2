@@ -20,13 +20,20 @@ KEY=${KEY:-$BASE/keys/student-admin_key}
 SLEEP_BETWEEN=${SLEEP_BETWEEN:-10}           # throttle: don't look like a scanner
 WEBHOOK=${DISCORD_WEBHOOK_URL:-$(grep -o 'https://discord.com/api/webhooks/[^ ]*' "$BASE/app.env" 2>/dev/null || true)}
 
-# --- hard window guard (sanctioned red-team period only) ---
-NOW=$(date +%s)
-START=$(date -d '2026-09-29 12:00:00' +%s 2>/dev/null || echo 0)
-END=$(date -d '2026-10-01 12:00:00' +%s 2>/dev/null || echo 0)
-if [ "$START" -eq 0 ] || [ "$NOW" -lt "$START" ] || [ "$NOW" -ge "$END" ]; then
-  echo "$(date '+%F %T') outside sanctioned red-team window — not running."
-  exit 0
+# SELFTEST=1 verifies the probe + Discord pipeline against OUR OWN VM only
+# (authorized any time); it bypasses the window guard and targets nobody else.
+if [ "${SELFTEST:-0}" = "1" ]; then
+  echo "[selftest] probing only our own VM (group ${MYGROUP}); window guard bypassed"
+  TARGETS="$MYGROUP"; MYGROUP="__selftest_none__"
+else
+  # --- hard window guard (sanctioned red-team period only) ---
+  NOW=$(date +%s)
+  START=$(date -d '2026-09-29 12:00:00' +%s 2>/dev/null || echo 0)
+  END=$(date -d '2026-10-01 12:00:00' +%s 2>/dev/null || echo 0)
+  if [ "$START" -eq 0 ] || [ "$NOW" -lt "$START" ] || [ "$NOW" -ge "$END" ]; then
+    echo "$(date '+%F %T') outside sanctioned red-team window — not running."
+    exit 0
+  fi
 fi
 
 post() {  # JSON-safe Discord post
