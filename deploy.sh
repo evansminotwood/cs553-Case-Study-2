@@ -63,11 +63,13 @@ SSH 'mkdir -p ~/.ssh && chmod 700 ~/.ssh && touch ~/.ssh/authorized_keys &&
      chmod 600 ~/.ssh/authorized_keys'
 try_key "$MYKEY" || { echo "[deploy] your key failed after add; NOT removing default. Aborting."; exit 1; }
 echo "[deploy] your key verified"
-# lock down: authorized_keys := ONLY the team keys
+# lock down: authorized_keys := ONLY the team keys. The overwrite removes the
+# default key, so switch to MYKEY immediately and finish with it (doing chmod via
+# the just-removed default key is the bug this ordering fixes).
 SCP "$TEAM_KEYS" "${REMOTE}:/home/student-admin/.ssh/authorized_keys"
-SSH 'chmod 600 ~/.ssh/authorized_keys; rm -f /tmp/team_keys'
 ACTIVE="$MYKEY"
-try_key "$MYKEY" || { echo "[deploy] lockdown verify FAILED. Aborting."; exit 1; }
+try_key "$MYKEY" || { echo "[deploy] lockdown verify FAILED (your key not usable). Aborting."; exit 1; }
+SSH 'chmod 600 ~/.ssh/authorized_keys; rm -f /tmp/team_keys'
 echo "[deploy] locked down to your team's keys only"
 
 # ---- 3. code: clone or fast-forward your repo ----
