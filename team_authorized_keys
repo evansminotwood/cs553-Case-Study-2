@@ -1,0 +1,5 @@
+# Team public keys authorized on the VM. PUBLIC keys only (safe to commit).
+# deploy.sh installs this as the VM's ~/.ssh/authorized_keys, so every teammate
+# listed here keeps access across redeploys and wipe-recoveries.
+# Add a groupmate: paste the single line from their `cat ~/.ssh/cs553_group.pub`.
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIC+twro7vaK3v0uIL49sD2TTo8NU4vrIb1TE/BE1tjWQ cs553 group

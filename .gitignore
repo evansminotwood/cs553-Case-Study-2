@@ -1,0 +1,10 @@
+tmp/
+app.env
+*.env
+!app.env.example
+*_key
+*_key.pub
+mykey*
+recovery.log
+__pycache__/
+venv/

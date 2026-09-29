@@ -1,0 +1,22 @@
+# systemd unit for the Effective AI Chatbot (DS/CS553 Case Study 2).
+# deploy.sh substitutes __APP_DIR__ with the absolute app path on the VM.
+# Restart=always -> survives app crashes; enabled -> survives VM reboots.
+[Unit]
+Description=Effective AI Chatbot (DS/CS553 Case Study 2)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=student-admin
+WorkingDirectory=__APP_DIR__
+# Holds DISCORD_WEBHOOK_URL (+ optional MONITOR_* overrides). chmod 600, not in git.
+EnvironmentFile=/home/student-admin/app.env
+ExecStart=__APP_DIR__/venv/bin/python __APP_DIR__/app.py
+Restart=always
+RestartSec=5
+StandardOutput=append:/home/student-admin/log.txt
+StandardError=append:/home/student-admin/log.txt
+
+[Install]
+WantedBy=multi-user.target
