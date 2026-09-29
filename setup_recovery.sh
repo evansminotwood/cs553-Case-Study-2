@@ -34,12 +34,13 @@ else
   echo "[setup] WARNING: could not reach the VM right now (down/wiped?) — recovery will handle it on its next run"
 fi
 
-# 3. install/refresh the crontab entry (idempotent: replaces any prior line)
+# 3. install/refresh the crontab entry (idempotent: replaces any prior line).
+# `crontab -l` errors when no crontab exists yet; `|| true` keeps set -e happy.
 LINE="*/${CRON_MIN} * * * * REPO_URL=${REPO_URL} BASE=${BASE} ${BASE}/recovery.sh"
-( crontab -l 2>/dev/null | grep -vF "${BASE}/recovery.sh" ; echo "$LINE" ) | crontab -
+{ (crontab -l 2>/dev/null | grep -vF "${BASE}/recovery.sh") || true; echo "$LINE"; } | crontab -
 echo "[setup] cron installed:"; crontab -l | grep -F "${BASE}/recovery.sh"
 
 # 4. run recovery once now to seed the log
-(cd "$BASE" && MYKEY="$BASE/keys/cs553_group" DEFAULT_KEY="$BASE/keys/student-admin_key" REPO_URL="$REPO_URL" ./recovery.sh) || true
+(cd "$BASE" && BASE="$BASE" MYKEY="$BASE/keys/cs553_group" DEFAULT_KEY="$BASE/keys/student-admin_key" REPO_URL="$REPO_URL" ./recovery.sh) || true
 echo "[setup] done. Watch: tail -f $BASE/recovery.log"
 tail -n 5 "$BASE/recovery.log" 2>/dev/null || true
