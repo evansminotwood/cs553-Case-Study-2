@@ -23,8 +23,16 @@ LOG=${LOG:-$BASE/recovery.log}
 
 MYKEY=${MYKEY:-$BASE/keys/cs553_group}
 DEFAULT_KEY=${DEFAULT_KEY:-$BASE/keys/student-admin_key}
+WEBHOOK=${DISCORD_WEBHOOK_URL:-$(grep -o 'https://discord.com/api/webhooks/[^ ]*' "$BASE/app.env" 2>/dev/null || true)}
 
 say() { echo "$(date '+%F %T') $*" >> "$LOG"; }
+# Posts to Discord for action events only (not healthy ticks) to avoid spam.
+notify() {
+  [ -n "${WEBHOOK:-}" ] || return 0
+  curl -s -o /dev/null -H 'Content-Type: application/json' \
+    --data "$(printf '%s' "🔁 recovery: $1" | python3 -c 'import json,sys;print(json.dumps({"content":sys.stdin.read()[:1990]}))')" \
+    "$WEBHOOK" || true
+}
 reachable() { ssh -i "$1" -p "$PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 "$REMOTE" true 2>/dev/null; }
 # Port 7860 is not exposed off the VM (WPI forwards only the SSH port), so check
 # the app on the VM's own localhost via SSH rather than the external hostname.
@@ -38,16 +46,17 @@ if reachable "$MYKEY"; then
   fi
   say "app DOWN (your key works) -> restart service"
   if ssh -i "$MYKEY" -p "$PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 "$REMOTE" "sudo systemctl restart effectivechatbot" 2>>"$LOG"; then
-    say "restart issued"
+    say "restart issued"; notify "app was down — restart issued on $MACHINE:$PORT"
   else
-    say "restart failed -> full redeploy"; redeploy && say "redeploy done" || say "redeploy FAILED"
+    say "restart failed -> full redeploy"; notify "app down + restart failed — running full redeploy"
+    redeploy && { say "redeploy done"; notify "redeploy done"; } || { say "redeploy FAILED"; notify "redeploy FAILED"; }
   fi
   exit 0
 fi
 
 if reachable "$DEFAULT_KEY"; then
-  say "WIPED (only default key) -> full redeploy + re-lock"
-  redeploy && say "redeploy done" || say "redeploy FAILED"
+  say "WIPED (only default key) -> full redeploy + re-lock"; notify "VM WIPED (only default key) — redeploying + re-locking"
+  redeploy && { say "redeploy done"; notify "redeploy done — VM re-locked"; } || { say "redeploy FAILED"; notify "redeploy FAILED"; }
   exit 0
 fi
 
