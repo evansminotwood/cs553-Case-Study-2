@@ -1,3 +1,5 @@
+import os
+
 import gradio as gr
 import torch
 from huggingface_hub import InferenceClient
@@ -117,10 +119,15 @@ def respond(
     messages.extend(history)
     messages.append({"role": "user", "content": message})
 
+    # Token resolution: use the box if the user typed one, otherwise fall back to
+    # the server-side HF_TOKEN from the environment (app.env). This lets the app
+    # run without anyone pasting a token into the UI.
+    token = hf_token or os.environ.get("HF_TOKEN", "")
+
     # EC#6 adaptive response: if the VM is near capacity, don't add local CPU
     # load — offload to the remote API instead of running the local model.
     if use_local_model and monitor.is_near_capacity():
-        if hf_token:
+        if token:
             print("[MODE] local -> api (near capacity, offloading)")
             use_local_model = False
         else:
@@ -144,8 +151,8 @@ def respond(
         yield f"🖥️ **[Local Model — {LOCAL_MODEL}]**\n\n{response}"
         return
 
-    if not hf_token:
-        yield "⚠️ Please enter your Hugging Face token first."
+    if not token:
+        yield "⚠️ No Hugging Face token available (set HF_TOKEN on the server or enter one above)."
         return
 
     print("[MODE] api (with automatic failover)")
@@ -155,7 +162,7 @@ def respond(
             raise RuntimeError("Simulated remote outage (demo toggle enabled)")
 
         client = InferenceClient(
-            token=hf_token,
+            token=token,
             model=REMOTE_MODEL,
             timeout=15,
         )
@@ -233,7 +240,7 @@ def build_demo():
                 value=False,
             ),
             gr.Textbox(
-                label="Hugging Face Token",
+                label="Hugging Face Token (optional — uses the server's HF_TOKEN if left blank)",
                 placeholder="hf_...",
                 type="password",
             ),
