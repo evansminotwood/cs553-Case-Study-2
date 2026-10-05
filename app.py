@@ -113,16 +113,13 @@ def respond(
     top_p,
     use_local_model,
     simulate_remote_outage,
-    hf_token,  # HF token string (VM uses a token box instead of Spaces OAuth)
 ):
     messages = [{"role": "system", "content": system_message}]
     messages.extend(history)
     messages.append({"role": "user", "content": message})
 
-    # Token resolution: use the box if the user typed one, otherwise fall back to
-    # the server-side HF_TOKEN from the environment (app.env). This lets the app
-    # run without anyone pasting a token into the UI.
-    token = hf_token or os.environ.get("HF_TOKEN", "")
+    # Server-side token from the environment (app.env) — no token box in the UI.
+    token = os.environ.get("HF_TOKEN", "")
 
     # EC#6 adaptive response: if the VM is near capacity, don't add local CPU
     # load — offload to the remote API instead of running the local model.
@@ -152,7 +149,7 @@ def respond(
         return
 
     if not token:
-        yield "⚠️ No Hugging Face token available (set HF_TOKEN on the server or enter one above)."
+        yield "⚠️ No Hugging Face token configured on the server (set HF_TOKEN in app.env)."
         return
 
     print("[MODE] api (with automatic failover)")
@@ -239,11 +236,6 @@ def build_demo():
                 label="Simulate Remote Outage (Demo Failover)",
                 value=False,
             ),
-            gr.Textbox(
-                label="Hugging Face Token (optional — uses the server's HF_TOKEN if left blank)",
-                placeholder="hf_...",
-                type="password",
-            ),
         ],
     )
 
@@ -262,10 +254,9 @@ def build_demo():
             chatbot.render()
 
             gr.Markdown(
-                "By default, requests go to the remote API and automatically fail over to the "
-                "local model if it's unavailable. Use **Additional inputs** to force the local "
-                "model, simulate a remote outage to see the failover, and enter your Hugging "
-                "Face token for the API.",
+                "By default, requests go to the remote API (authenticated with the server's "
+                "token) and automatically fail over to the local model if it's unavailable. "
+                "Use **Additional inputs** to force the local model or simulate a remote outage.",
                 elem_id="model-note",
             )
 
