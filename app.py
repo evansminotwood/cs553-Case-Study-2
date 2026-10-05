@@ -1,25 +1,44 @@
 import gradio as gr
+import torch
 from huggingface_hub import InferenceClient
 from transformers import pipeline
-from huggingface_hub import HfApi, InferenceClient
 
 from monitor import ResourceMonitor
 
 LOCAL_MODEL = "Qwen/Qwen3-0.6B"
 REMOTE_MODEL = "openai/gpt-oss-20b"
 
-monitor = ResourceMonitor()
-
+# VM adaptation: original CS1 app ran on a HF Spaces GPU (device="cuda" + the
+# `spaces`/@spaces.GPU decorator). On the VM there's no Space wrapper, so we
+# auto-detect the device and drop the decorator.
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 pipe = pipeline(
     "text-generation",
     model=LOCAL_MODEL,
     dtype="auto",
-    device="cpu",
+    device=DEVICE,
 )
 
+monitor = ResourceMonitor()
 
 fancy_css = """
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&display=swap');
+
+:root, .dark {
+    --body-background-fill: radial-gradient(ellipse at top, #145a32 0%, #0b3d2e 55%, #062017 100%);
+    --background-fill-primary: #0f4a33;
+    --background-fill-secondary: #0b3d2e;
+    --border-color-primary: #d4af37;
+    --border-color-accent: #d4af37;
+    --button-primary-background-fill: #d4af37;
+    --button-primary-background-fill-hover: #e8c766;
+    --button-primary-text-color: #1a1006;
+    --color-accent: #d4af37;
+    --body-text-color: #f5f0e1;
+    --link-text-color: #f4d160;
+}
+
 .gradio-container {
     width: 96% !important;
     max-width: none !important;
@@ -27,22 +46,29 @@ fancy_css = """
 #app-title {
     text-align: center;
     margin-bottom: 4px;
+    font-family: "Playfair Display", Georgia, serif;
+    font-size: 2.4em;
+    color: #d4af37;
+    text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+    letter-spacing: 1px;
 }
 #app-subtitle {
     text-align: center;
-    color: var(--body-text-color-subdued);
+    color: #e8dcb5;
+    font-style: italic;
     margin-bottom: 24px;
 }
 #chat-container {
     width: 100%;
-    border: 1px solid var(--border-color-primary);
-    border-radius: 12px;
+    border: 2px solid #d4af37;
+    border-radius: 16px;
     padding: 16px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    background: repeating-linear-gradient(135deg, #0b3d2e, #0b3d2e 24px, #0e4534 24px, #0e4534 48px);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), inset 0 0 40px rgba(0, 0, 0, 0.25);
 }
 #model-note {
     font-size: 0.9em;
-    color: var(--body-text-color-subdued);
+    color: #e8dcb5;
     margin-top: 8px;
 }
 @media (max-width: 768px) {
@@ -52,11 +78,13 @@ fancy_css = """
     #chat-container {
         padding: 8px;
     }
+    #app-title {
+        font-size: 1.8em;
+    }
 }
 """
 
 
-# Removed @spaces.GPU
 def local_generate(
     messages,
     max_tokens,
@@ -82,15 +110,16 @@ def respond(
     temperature,
     top_p,
     use_local_model,
-    hf_token,  # Now an ordinary string
+    simulate_remote_outage,
+    hf_token,  # HF token string (VM uses a token box instead of Spaces OAuth)
 ):
     messages = [{"role": "system", "content": system_message}]
     messages.extend(history)
     messages.append({"role": "user", "content": message})
 
+    # EC#6 adaptive response: if the VM is near capacity, don't add local CPU
+    # load — offload to the remote API instead of running the local model.
     if use_local_model and monitor.is_near_capacity():
-        # Adaptive response: the VM is near capacity, so offload the local CPU
-        # model to the remote Inference API instead of adding more local load.
         if hf_token:
             print("[MODE] local -> api (near capacity, offloading)")
             use_local_model = False
@@ -103,7 +132,7 @@ def respond(
             return
 
     if use_local_model:
-        print("[MODE] local")
+        print("[MODE] local (manual)")
 
         response = local_generate(
             messages,
@@ -112,188 +141,133 @@ def respond(
             top_p,
         )
 
-        yield response
+        yield f"🖥️ **[Local Model — {LOCAL_MODEL}]**\n\n{response}"
         return
-
-    print("[MODE] api")
 
     if not hf_token:
         yield "⚠️ Please enter your Hugging Face token first."
         return
 
-    client = InferenceClient(
-        token=hf_token,
-        model=REMOTE_MODEL,
-    )
-
-    response = ""
-
-    for chunk in client.chat_completion(
-        messages,
-        max_tokens=max_tokens,
-        stream=True,
-        temperature=temperature,
-        top_p=top_p,
-    ):
-        choices = chunk.choices
-        token = ""
-
-        if len(choices) and choices[0].delta.content:
-            token = choices[0].delta.content
-
-        response += token
-        yield response
-
-
-chatbot = gr.ChatInterface(
-    fn=respond,
-    additional_inputs=[
-        gr.Textbox(
-            value="You are a friendly Chatbot.",
-            label="System message",
-        ),
-        gr.Slider(
-            minimum=1,
-            maximum=2048,
-            value=512,
-            step=1,
-            label="Max new tokens",
-        ),
-        gr.Slider(
-            minimum=0.1,
-            maximum=2.0,
-            value=0.7,
-            step=0.1,
-            label="Temperature",
-        ),
-        gr.Slider(
-            minimum=0.1,
-            maximum=1.0,
-            value=0.95,
-            step=0.05,
-            label="Top-p (nucleus sampling)",
-        ),
-        gr.Checkbox(
-            label="Use Local Model",
-            value=False,
-        ),
-        # Replaces gr.LoginButton and gr.OAuthToken
-        gr.Textbox(
-            label="Hugging Face Token",
-            placeholder="hf_...",
-            type="password",
-        ),
-    ],
-)
-
-def validate_hf_token(hf_token):
-    if not hf_token or not hf_token.strip():
-        return "⚠️ Enter a Hugging Face token."
+    print("[MODE] api (with automatic failover)")
 
     try:
-        account = HfApi(token=hf_token.strip()).whoami()
-        username = account.get("name", "unknown user")
-        return f"Valid Hugging Face token for **{username}**."
-    except Exception:
-        return (
-            "The token could not be validated. "
+        if simulate_remote_outage:
+            raise RuntimeError("Simulated remote outage (demo toggle enabled)")
+
+        client = InferenceClient(
+            token=hf_token,
+            model=REMOTE_MODEL,
+            timeout=15,
         )
-    
-with gr.Blocks(css=fancy_css) as demo:
-    gr.Markdown(
-        "# 🌟 Effective AI Chatbot",
-        elem_id="app-title",
+
+        response = ""
+
+        for chunk in client.chat_completion(
+            messages,
+            max_tokens=max_tokens,
+            stream=True,
+            temperature=temperature,
+            top_p=top_p,
+        ):
+            choices = chunk.choices
+            token = ""
+
+            if len(choices) and choices[0].delta.content:
+                token = choices[0].delta.content
+
+            response += token
+            yield f"🌐 **[Remote API — {REMOTE_MODEL}]**\n\n{response}"
+
+        return
+    except Exception as exc:
+        print(f"[FAILOVER] Remote API unavailable ({exc!r}); falling back to local model")
+
+    response = local_generate(messages, max_tokens, temperature, top_p)
+    yield (
+        "⚠️ **Remote API unavailable — automatically switched to the local model.**\n\n"
+        f"🖥️ **[Local Model — {LOCAL_MODEL}, fallback]**\n\n{response}"
     )
 
-    gr.Markdown(
-        "A fancier version of the standard Hugging Face chatbot template.",
-        elem_id="app-subtitle",
+
+def build_demo():
+    chatbot = gr.ChatInterface(
+        fn=respond,
+        additional_inputs=[
+            gr.Textbox(
+                value=(
+                    "You are a friendly, patient Blackjack tutor. For every hand, state the "
+                    "mathematically optimal basic-strategy play (hit, stand, double down, split, "
+                    "or surrender) and explain *why* it's correct in terms of the dealer's "
+                    "up-card and the house edge. Adapt your explanations to the player's stated "
+                    "skill level, and encourage responsible bankroll management."
+                ),
+                label="System message",
+            ),
+            gr.Slider(
+                minimum=1,
+                maximum=2048,
+                value=512,
+                step=1,
+                label="Max new tokens",
+            ),
+            gr.Slider(
+                minimum=0.1,
+                maximum=2.0,
+                value=0.7,
+                step=0.1,
+                label="Temperature",
+            ),
+            gr.Slider(
+                minimum=0.1,
+                maximum=1.0,
+                value=0.95,
+                step=0.05,
+                label="Top-p (nucleus sampling)",
+            ),
+            gr.Checkbox(
+                label="Use Local Model",
+                value=False,
+            ),
+            gr.Checkbox(
+                label="Simulate Remote Outage (Demo Failover)",
+                value=False,
+            ),
+            gr.Textbox(
+                label="Hugging Face Token",
+                placeholder="hf_...",
+                type="password",
+            ),
+        ],
     )
 
-    # Token entry immediately below the header
-    with gr.Row():
-        hf_token = gr.Textbox(
-            label="Hugging Face Token",
-            placeholder="hf_...",
-            type="password",
-            scale=4,
-        )
-
-        validate_button = gr.Button(
-            "Validate Token",
-            scale=1,
-        )
-
-    token_status = gr.Markdown()
-
-    with gr.Accordion("Additional inputs", open=False):
-        system_message = gr.Textbox(
-            value="You are a friendly Chatbot.",
-            label="System message",
-        )
-
-        max_tokens = gr.Slider(
-            minimum=1,
-            maximum=2048,
-            value=512,
-            step=1,
-            label="Max new tokens",
-        )
-
-        temperature = gr.Slider(
-            minimum=0.1,
-            maximum=2.0,
-            value=0.7,
-            step=0.1,
-            label="Temperature",
-        )
-
-        top_p = gr.Slider(
-            minimum=0.1,
-            maximum=1.0,
-            value=0.95,
-            step=0.05,
-            label="Top-p (nucleus sampling)",
-        )
-
-        use_local_model = gr.Checkbox(
-            label="Use Local Model",
-            value=False,
-        )
-
-    with gr.Column(elem_id="chat-container"):
-        chatbot_component = gr.Chatbot()
-
-        gr.ChatInterface(
-            fn=respond,
-            chatbot=chatbot_component,
-            additional_inputs=[
-                system_message,
-                max_tokens,
-                temperature,
-                top_p,
-                use_local_model,
-                hf_token,
-            ],
+    with gr.Blocks(css=fancy_css) as demo:
+        gr.Markdown(
+            "# ♠️ Blackjack Tutor ♥️",
+            elem_id="app-title",
         )
 
         gr.Markdown(
-            "Use **Additional inputs** to switch between the API model "
-            "and the locally executed model.",
-            elem_id="model-note",
+            "Master basic strategy, one hand at a time.",
+            elem_id="app-subtitle",
         )
 
-    validate_button.click(
-        fn=validate_hf_token,
-        inputs=hf_token,
-        outputs=token_status,
-        api_visibility="private",
-    )
+        with gr.Column(elem_id="chat-container"):
+            chatbot.render()
+
+            gr.Markdown(
+                "By default, requests go to the remote API and automatically fail over to the "
+                "local model if it's unavailable. Use **Additional inputs** to force the local "
+                "model, simulate a remote outage to see the failover, and enter your Hugging "
+                "Face token for the API.",
+                elem_id="model-note",
+            )
+
+    return demo
 
 
 if __name__ == "__main__":
     monitor.start()
-    demo.launch(
+    build_demo().launch(
         server_name="0.0.0.0",
         server_port=7860,
     )
