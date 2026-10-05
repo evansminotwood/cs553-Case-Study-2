@@ -10,6 +10,8 @@ Wants=network-online.target
 Type=simple
 User=student-admin
 WorkingDirectory=__APP_DIR__
+# Unbuffered so print()/tracebacks flush to log.txt immediately (easier debugging).
+Environment=PYTHONUNBUFFERED=1
 # Holds DISCORD_WEBHOOK_URL (+ optional MONITOR_* overrides). chmod 600, not in git.
 EnvironmentFile=/home/student-admin/app.env
 ExecStart=__APP_DIR__/venv/bin/python __APP_DIR__/app.py
